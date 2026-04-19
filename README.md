@@ -1,12 +1,12 @@
 # Drug-Drug Interaction Extraction
 
-NLP course project — Meghnadh Bijnapally & Rochan (Northeastern University)
+NLP course project — Northeastern University
 
 ---
 
-We built a system that takes a clinical sentence mentioning two drugs and classifies what kind of interaction exists between them (or whether there is one at all). The idea came from the SemEval-2013 Task 9 shared task on DDI extraction, which has a nicely labeled dataset we used for training and evaluation.
+I built a system that takes a clinical sentence mentioning two drugs and classifies what kind of interaction exists between them (or whether there is one at all). The idea came from the SemEval-2013 Task 9 shared task on DDI extraction, which has a nicely labeled dataset I used for training and evaluation.
 
-The two of us split the work into two separate approaches so we could compare them at the end. I (Meghnadh) did the BioBERT track and Rochan did the GCN track. Writeup below covers both.
+I implemented two different approaches to compare how a pre-trained language model stacks up against a graph-based method on the same task.
 
 ---
 
@@ -26,9 +26,9 @@ There are 5 classes in the dataset:
 
 ## Two approaches
 
-### Track 1 — BioBERT
+### Approach 1 — BioBERT
 
-Fine-tuned BioBERT (dmis-lab/biobert-v1.1) on the DDI corpus. The model was pre-trained on PubMed so it already understands biomedical language before we even touch it, which helps a lot. The approach uses entity markers — you wrap the two drug names with special tokens like `[E1] warfarin [/E1]` and `[E2] aspirin [/E2]` before passing the sentence in, then extract the hidden states at those positions and classify from there.
+Fine-tuned BioBERT (dmis-lab/biobert-v1.1) on the DDI corpus. The model was pre-trained on PubMed so it already understands biomedical language before I even touch it, which helps a lot. The approach uses entity markers — you wrap the two drug names with special tokens like `[E1] warfarin [/E1]` and `[E2] aspirin [/E2]` before passing the sentence in, then extract the hidden states at those positions and classify from there.
 
 The class imbalance (85% negative) was the main headache. Ended up using Focal Loss with inverse-frequency class weights, which helped quite a bit.
 
@@ -36,9 +36,9 @@ Results on the test set:
 - Macro F1 (positive classes only, which is the official metric): **0.63**
 - Precision: 0.66 | Recall: 0.61
 
-This is with `freeze_layers=10` (only training the top 2 BERT layers) which we had to do because training the full 108M parameter model on CPU takes forever. Full fine-tuning on a GPU should push this closer to 0.75-0.80.
+This is with `freeze_layers=10` (only training the top 2 BERT layers) because training the full 108M parameter model on CPU takes forever. Full fine-tuning on a GPU should push this closer to 0.75-0.80.
 
-### Track 2 — GCN 
+### Approach 2 — GCN
 
 Builds a dependency parse tree for each sentence using spaCy, then runs a Graph Convolutional Network over it. The idea is that in a sentence like "rifampin induces CYP3A4 and thereby decreases clarithromycin levels", the shortest dependency path between the two drugs carries most of the interaction signal.
 
@@ -74,7 +74,7 @@ python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-# for the GCN track you also need:
+# for the GCN approach you also need:
 python -m spacy download en_core_web_md
 ```
 
@@ -138,6 +138,6 @@ ui/              — React frontend
 
 Training on CPU is slow. The BioBERT training took a few hours even with layer freezing. If you're replicating this, use Colab with a GPU — it's much more reasonable.
 
-The GCN uses the full dependency tree rather than just the shortest path between the two drugs. The shortest path approach from the original DGCNN paper would probably work better but we ran out of time to implement it properly.
+The GCN uses the full dependency tree rather than just the shortest path between the two drugs. The shortest path approach from the original DGCNN paper would probably work better but I ran out of time to implement it properly.
 
-The `negative` class F1 is high but that's just because it dominates the dataset. The metric we care about for this task is macro-F1 over the 4 positive classes only, which is what the numbers above reflect.
+The `negative` class F1 is high but that's just because it dominates the dataset. The metric I care about for this task is macro-F1 over the 4 positive classes only, which is what the numbers above reflect.
