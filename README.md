@@ -26,7 +26,7 @@ There are 5 classes in the dataset:
 
 ## Two approaches
 
-### Track 1 — BioBERT (my part)
+### Track 1 — BioBERT
 
 Fine-tuned BioBERT (dmis-lab/biobert-v1.1) on the DDI corpus. The model was pre-trained on PubMed so it already understands biomedical language before we even touch it, which helps a lot. The approach uses entity markers — you wrap the two drug names with special tokens like `[E1] warfarin [/E1]` and `[E2] aspirin [/E2]` before passing the sentence in, then extract the hidden states at those positions and classify from there.
 
@@ -38,7 +38,7 @@ Results on the test set:
 
 This is with `freeze_layers=10` (only training the top 2 BERT layers) which we had to do because training the full 108M parameter model on CPU takes forever. Full fine-tuning on a GPU should push this closer to 0.75-0.80.
 
-### Track 2 — GCN (Rochan's part)
+### Track 2 — GCN 
 
 Builds a dependency parse tree for each sentence using spaCy, then runs a Graph Convolutional Network over it. The idea is that in a sentence like "rifampin induces CYP3A4 and thereby decreases clarithromycin levels", the shortest dependency path between the two drugs carries most of the interaction signal.
 
