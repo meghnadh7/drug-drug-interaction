@@ -30,3 +30,7 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# React / Node
+ui/node_modules/
+ui/dist/
