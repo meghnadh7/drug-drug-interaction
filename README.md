@@ -6,7 +6,7 @@ NLP course project — Northeastern University
 
 I built a system that takes a clinical sentence mentioning two drugs and classifies what kind of interaction exists between them (or whether there is one at all). The idea came from the SemEval-2013 Task 9 shared task on DDI extraction, which has a nicely labeled dataset I used for training and evaluation.
 
-I implemented two different approaches to compare how a pre-trained language model stacks up against a graph-based method on the same task.
+I implemented two different approaches to compare how a pre-trained language model stacks up against a graph-neural-network method on the same task.
 
 ---
 
@@ -48,15 +48,32 @@ Per-class breakdown:
 
 The `int` class scores lower because it's the rarest and most ambiguous — it means "interaction mentioned without specifying type", which often looks identical to an effect sentence. Every published paper on this dataset has the same problem with it.
 
-### Approach 2 — GCN
+### Approach 2 — ChemBERTa-R-GAT
 
-Builds a dependency parse tree for each sentence using spaCy, then runs a Graph Convolutional Network over it. The idea is that in a sentence like "rifampin induces CYP3A4 and thereby decreases clarithromycin levels", the shortest dependency path between the two drugs carries most of the interaction signal.
+Instead of reading the sentence as plain text, this approach builds a graph from the sentence's grammatical structure (dependency parse tree) and runs a graph neural network over it. The key insight is that the **Shortest Dependency Path (SDP)** between the two drug tokens contains most of the interaction signal — words like "potentiates", "contraindicated", "synergistic" sit directly on that path and tell you the interaction type.
 
-Trained from scratch (no pre-trained weights), so needed more epochs and a higher learning rate than BioBERT.
+**How it works:**
 
-Results:
-- Macro F1: **0.45**
-- Much faster to train though (~20 min vs hours for BioBERT)
+- **Drug nodes** get ChemBERTa embeddings (a BERT model pre-trained on 77 million SMILES strings). This encodes the drug's actual molecular structure, not just its name as text.
+- **Context nodes** (the words on the SDP between the two drugs) get frozen BioBERT embeddings. BioBERT was pre-trained on PubMed so it actually understands biomedical verbs and clinical terms.
+- **Edges** carry dependency relation types (nsubj, dobj, prep, etc.) which get fed into the attention mechanism.
+- **R-GAT** (Relational Graph Attention Network) runs 4 layers with 8 attention heads. The relational part means different grammatical connections get different attention weights — a subject relation and a prepositional relation mean different things.
+- **Two-stage classifier:** a binary head first decides "is there any interaction?", then a type head decides "which type?". This stops the dominant negative class from contaminating the type decision.
+
+This approach went through several iterations — the first version used plain GloVe word vectors for context nodes and scored 0.37. Replacing those with frozen BioBERT jumped it to 0.55 in one change, which confirmed that feature quality on the context nodes (the interaction verbs) was the main bottleneck.
+
+Results on the test set:
+- Macro F1 (positive classes only): **0.56**
+- Precision: 0.54 | Recall: 0.54
+
+| Class | F1 |
+|---|---|
+| advise | 0.63 |
+| mechanism | 0.56 |
+| effect | 0.52 |
+| int | 0.42 |
+
+Trains in about 30-40 min on CPU (much lighter than BioBERT). The main limitation is SMILES coverage — about 30% of drugs in the corpus couldn't be looked up in PubChem and get zero vectors.
 
 ---
 
@@ -84,7 +101,7 @@ python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-# for the GCN approach you also need:
+# for the ChemBERTa-R-GAT approach you also need:
 python -m spacy download en_core_web_md
 ```
 
@@ -98,7 +115,7 @@ python main.py
 ```
 Runs for 3 epochs. Set `demo_mode=True` in `main.py` if you just want to verify the pipeline quickly (~5 min).
 
-**GCN training:**
+**ChemBERTa-R-GAT training:**
 ```bash
 python gcn_main.py
 ```
@@ -129,16 +146,16 @@ Go to http://localhost:3000. Type a sentence with two drug names, enter the drug
 
 ```
 main.py          — BioBERT training entry point
-gcn_main.py      — GCN training entry point
+gcn_main.py      — ChemBERTa-R-GAT training entry point
 ddi_dataset.py   — XML parsing + tokenization for BioBERT
-gcn_dataset.py   — spaCy parsing + graph construction for GCN
-model.py         — DDIClassifier (BioBERT + classification head)
-gcn_model.py     — DDIGCN (graph convolutional network)
-train.py         — training loop for BioBERT (FocalLoss, etc.)
-gcn_train.py     — training loop for GCN
+gcn_dataset.py   — spaCy SDP parsing + graph construction for R-GAT
+model.py         — DDIClassifier (BioBERT + entity-span head)
+gcn_model.py     — ChemBERTa-R-GAT model (R-GAT + two-stage classifier)
+train.py         — training loop for BioBERT (FocalLoss, warmup scheduler)
+gcn_train.py     — training loop for R-GAT (dual FocalLoss, ReduceLROnPlateau)
 evaluate.py      — test set evaluation (F1, confusion matrix)
-gcn_evaluate.py  — same for GCN
-api.py           — Flask API that wraps the trained model
+gcn_evaluate.py  — same for R-GAT
+api.py           — Flask API that wraps the trained BioBERT model
 ui/              — React frontend
 ```
 
@@ -146,8 +163,10 @@ ui/              — React frontend
 
 ## Notes / known issues
 
-Training on CPU is slow. The BioBERT training took a few hours even with layer freezing. If you're replicating this, use Colab with a GPU — it's much more reasonable.
+BioBERT training on CPU is slow — use Colab with a T4 GPU, it takes 20-25 min there vs several hours on CPU.
 
-The GCN uses the full dependency tree rather than just the shortest path between the two drugs. The shortest path approach from the original DGCNN paper would probably work better but I ran out of time to implement it properly.
+The ChemBERTa-R-GAT approach has a SMILES coverage gap — about 30% of drugs in the corpus couldn't be found in PubChem and get zero vectors instead of ChemBERTa embeddings. A more complete drug-to-SMILES lookup would likely improve results.
 
-The `negative` class F1 is high but that's just because it dominates the dataset. The metric I care about for this task is macro-F1 over the 4 positive classes only, which is what the numbers above reflect.
+The `int` class is the hardest for both approaches — it only has ~2% of the training data and the sentences look very similar to `effect` sentences. Both models struggle with it.
+
+The `negative` class F1 is high but that's just because it's 85% of the data. The metric that matters for this task is macro-F1 over the 4 positive classes only, which is what all the numbers above reflect.
