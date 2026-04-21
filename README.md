@@ -32,11 +32,21 @@ Fine-tuned BioBERT (dmis-lab/biobert-v1.1) on the DDI corpus. The model was pre-
 
 The class imbalance (85% negative) was the main headache. Ended up using Focal Loss with inverse-frequency class weights, which helped quite a bit.
 
-Results on the test set:
-- Macro F1 (positive classes only, which is the official metric): **0.63**
-- Precision: 0.66 | Recall: 0.61
+Results on the test set (full fine-tuning on GPU, all 12 layers trained):
+- Macro F1 (positive classes only, which is the official metric): **0.75**
+- Precision: 0.84 | Recall: 0.72
+- Overall accuracy: 94%
 
-This is with `freeze_layers=10` (only training the top 2 BERT layers) because training the full 108M parameter model on CPU takes forever. Full fine-tuning on a GPU should push this closer to 0.75-0.80.
+Per-class breakdown:
+
+| Class | F1 |
+|---|---|
+| mechanism | 0.84 |
+| advise | 0.83 |
+| effect | 0.79 |
+| int | 0.54 |
+
+The `int` class scores lower because it's the rarest and most ambiguous — it means "interaction mentioned without specifying type", which often looks identical to an effect sentence. Every published paper on this dataset has the same problem with it.
 
 ### Approach 2 — GCN
 
